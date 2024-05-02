@@ -53,10 +53,11 @@ function run_build ()
   grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || { true; }  
 }
 
+export -f run_build
+
 # usage : enable devtoolset-8 -- /entrypoint.sh bisect [bad commit] [good commit] [testcase path ex)shell/.../cases/xxx.sh]
 function run_bisect ()
 {
-  shift
   BAD_COMMIT=$1
   GOOD_COMMIT=$2
   TEST_CASE=$3
@@ -67,11 +68,7 @@ function run_bisect ()
   git bisect start $BAD_COMMIT $GOOD_COMMIT
 
   git bisect run bash -c "
-    # Begin: Inline run_build function
-    cd '$CUBRID_SRCDIR' &&
-    ./build.sh -p $CUBRID -g ninja clean build &&
-    grep -e '\\[[ 0-9]\\+%\\]' -e ' error: ' -e '\\[[0-9]\\+/[0-9]\\+\\]' build.log || { tail -500 build.log; exit 1; }
-    # End: Inline run_build function
+    run_build -g ninja &&
 
     # Begin: Inline run_test_single_case function
     TEST_CASE='$TEST_CASE'
@@ -81,19 +78,28 @@ function run_bisect ()
 
     # Change to the test case directory and execute the test script
     cd \"\$TCROOTDIRNAME/\$TESTDIR\" &&
-    sh \"\$TESTFILE\" &&
-    echo \"Test script \$TESTFILE executed.\"
+    sh \"\$TESTFILE\" 2>&1 | tee runtime.log
+    if [ \$? -ne 0 ]; then
+      echo \"Test script \$TESTFILE failed during execution.\"
+      exit 1
+    fi
+    echo \"Test script \$TESTFILE executed successfully.\"
 
     # Check results and handle outcome
     nameNotExt=\"\${TESTFILE%.*}\"
     NOKCnt=\$(grep -rw NOK \"\${nameNotExt}.result\" | wc -l)
 
     cd $WORKDIR
-    [ \$NOKCnt -ge 1 ] && { echo \"\$TEST_CASE ==> NOK\"; exit 1; } || { echo \"\$TEST_CASE ==> OK\"; exit 0; }
+    if [ \$NOKCnt -ge 1 ]; then
+      echo \"\$TEST_CASE ==> NOK\"
+      exit 1
+    else
+      echo \"\$TEST_CASE ==> OK\"
+      exit 0
+    fi
     # End: Inline run_test_single_case function
   "
 
-  git log -1
   git bisect reset
 }
 
@@ -314,6 +320,7 @@ case "$1" in
     set -- run_build "$@"
     ;;
   bisect)
+    shift
     set -- run_bisect "$@"
     ;;
   dist)
