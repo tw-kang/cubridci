@@ -1,5 +1,9 @@
 #!/bin/bash -le
 
+export CTP_HOME=$WORKDIR/cubrid-testtools/CTP
+export init_path=$CTP_HOME/shell/init_path
+export CTP_SKIP_UPDATE=0
+
 function run_checkout ()
 {
   if [ ! -d $WORKDIR/cubrid ]; then
@@ -27,7 +31,7 @@ function run_checkout ()
     return 1
   fi
   if [ ! -d $WORKDIR/cubrid-testcases-private-ex ]; then
-    git clone -q --depth 1 --branch $BRANCH_TESTCASES https://github.com/CUBRID/cubrid-testcases-private-ex.git $WORKDIR/cubrid-testcases-private-ex
+    git clone -q --depth 1 --branch $BRANCH_TESTCASES https://github.com/CUBRID/cubrid-testcases-private-ex $WORKDIR/cubrid-testcases-private-ex
   elif [ -d $WORKDIR/cubrid-testcases-private-ex/.git ]; then
     (cd $WORKDIR/cubrid-testcases-private-ex && git clean -df)
   else
@@ -53,7 +57,42 @@ function run_build ()
   grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || { true; }  
 }
 
-export -f run_build
+function run_test_single ()
+{
+  TEST_CASE=$1
+  TCROOTDIRNAME=$WORKDIR/cubrid-testcases-private-ex
+  TESTDIR=$(dirname "$TEST_CASE")
+  TESTFILE=$(basename "$TEST_CASE")
+
+  run_build -g ninja
+
+  if [ ! -e "$TCROOTDIRNAME" ]; then
+      echo "Check testcases path: $TCROOTDIRNAME does not exist."
+      return 1
+  fi
+
+  cd "$TCROOTDIRNAME/$TESTDIR"
+  if [ ! -f "$TESTFILE" ]; then
+      echo "$TEST_CASE does not exist in $TCROOTDIRNAME."
+      return 1
+  fi
+
+  sh $TESTFILE
+  if [ $? -ne 0 ]; then
+    echo "Test script $TESTFILE failed during execution."
+    exit 1
+  fi
+  echo "Test script $TESTFILE executed successfully."
+  nameNotExt="${TESTFILE%.*}"
+  NOKCnt=$(grep -rw NOK "${nameNotExt}.result" | wc -l)
+
+  cd "$WORKDIR"
+  [ $NOKCnt -ge 1 ] && { echo "$TEST_CASE ==> NOK"; return 1; } || { echo "$TEST_CASE ==> OK"; return 0; }
+
+}
+
+#export -f run_build
+export -f run_test_single
 
 # usage : bisect [bad commit] [good commit] [testcase path ex)shell/.../cases/xxx.sh]
 function run_bisect ()
@@ -66,11 +105,7 @@ function run_bisect ()
 
   cd $WORKDIR/cubrid
   git bisect start $BAD_COMMIT $GOOD_COMMIT
-  git bisect run bash -c "
-    source $WORKDIR/functions.sh &&
-    run_build -g ninja &&
-    run_test_single $TEST_CASE
-  "
+  git bisect run run_test_single $TEST_CASE
   git bisect reset
 }
 
