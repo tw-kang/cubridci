@@ -55,7 +55,7 @@ function run_build ()
 
 export -f run_build
 
-# usage : enable devtoolset-8 -- /entrypoint.sh bisect [bad commit] [good commit] [testcase path ex)shell/.../cases/xxx.sh]
+# usage : bisect [bad commit] [good commit] [testcase path ex)shell/.../cases/xxx.sh]
 function run_bisect ()
 {
   BAD_COMMIT=$1
@@ -66,40 +66,11 @@ function run_bisect ()
 
   cd $WORKDIR/cubrid
   git bisect start $BAD_COMMIT $GOOD_COMMIT
-
   git bisect run bash -c "
+    source $WORKDIR/functions.sh &&
     run_build -g ninja &&
-
-    # Begin: Inline run_test_single_case function
-    TEST_CASE='$TEST_CASE'
-    TCROOTDIRNAME='$WORKDIR/cubrid-testcases-private-ex'
-    TESTDIR=\$(dirname \"\$TEST_CASE\")
-    TESTFILE=\$(basename \"\$TEST_CASE\")
-
-    # Change to the test case directory and execute the test script
-    cd \"\$TCROOTDIRNAME/\$TESTDIR\" &&
-    sh \"\$TESTFILE\" 2>&1 | tee runtime.log
-    if [ \$? -ne 0 ]; then
-      echo \"Test script \$TESTFILE failed during execution.\"
-      exit 1
-    fi
-    echo \"Test script \$TESTFILE executed successfully.\"
-
-    # Check results and handle outcome
-    nameNotExt=\"\${TESTFILE%.*}\"
-    NOKCnt=\$(grep -rw NOK \"\${nameNotExt}.result\" | wc -l)
-
-    cd $WORKDIR
-    if [ \$NOKCnt -ge 1 ]; then
-      echo \"\$TEST_CASE ==> NOK\"
-      exit 1
-    else
-      echo \"\$TEST_CASE ==> OK\"
-      exit 0
-    fi
-    # End: Inline run_test_single_case function
+    run_test_single $TEST_CASE
   "
-
   git bisect reset
 }
 

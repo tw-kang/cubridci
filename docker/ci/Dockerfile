@@ -52,11 +52,6 @@ ENV TEST_REPORT /tmp/tests
 ENV BRANCH_TESTTOOLS develop
 ENV BRANCH_TESTCASES develop
 
-# CTP environment variables
-ENV CTP_HOME=$WORKDIR/cubrid-testtools/CTP
-ENV init_path=$CTP_HOME/shell/init_path
-ENV CTP_SKIP_UPDATE=0
-
 # set timezone for test
 ENV TZ Asia/Seoul
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
@@ -67,6 +62,7 @@ RUN localedef -f UTF-8 -i ko_KR ko_KR.utf8
 RUN localedef -f EUC-KR -i ko_KR ko_KR.euckr
 
 COPY docker-entrypoint.sh /entrypoint.sh
+COPY functions.sh $WORKDIR/functions.sh
 
 RUN chmod 775 /entrypoint.sh
 RUN chmod 777 $WORKDIR
