@@ -62,9 +62,10 @@ RUN localedef -f UTF-8 -i ko_KR ko_KR.utf8
 RUN localedef -f EUC-KR -i ko_KR ko_KR.euckr
 
 COPY docker-entrypoint.sh /entrypoint.sh
-COPY functions.sh $WORKDIR/functions.sh
+COPY run_build_test.sh $WORKDIR/run_build_test.sh
 
 RUN chmod 775 /entrypoint.sh
+RUN chmod 775 $WORKDIR/run_build_test.sh
 RUN chmod 777 $WORKDIR
 WORKDIR $WORKDIR
 

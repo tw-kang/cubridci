@@ -57,43 +57,6 @@ function run_build ()
   grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || { true; }  
 }
 
-function run_test_single ()
-{
-  TEST_CASE=$1
-  TCROOTDIRNAME=$WORKDIR/cubrid-testcases-private-ex
-  TESTDIR=$(dirname "$TEST_CASE")
-  TESTFILE=$(basename "$TEST_CASE")
-
-  run_build -g ninja
-
-  if [ ! -e "$TCROOTDIRNAME" ]; then
-      echo "Check testcases path: $TCROOTDIRNAME does not exist."
-      return 1
-  fi
-
-  cd "$TCROOTDIRNAME/$TESTDIR"
-  if [ ! -f "$TESTFILE" ]; then
-      echo "$TEST_CASE does not exist in $TCROOTDIRNAME."
-      return 1
-  fi
-
-  sh $TESTFILE
-  if [ $? -ne 0 ]; then
-    echo "Test script $TESTFILE failed during execution."
-    exit 1
-  fi
-  echo "Test script $TESTFILE executed successfully."
-  nameNotExt="${TESTFILE%.*}"
-  NOKCnt=$(grep -rw NOK "${nameNotExt}.result" | wc -l)
-
-  cd "$WORKDIR"
-  [ $NOKCnt -ge 1 ] && { echo "$TEST_CASE ==> NOK"; return 1; } || { echo "$TEST_CASE ==> OK"; return 0; }
-
-}
-
-#export -f run_build
-export -f run_test_single
-
 # usage : bisect [bad commit] [good commit] [testcase path ex)shell/.../cases/xxx.sh]
 function run_bisect ()
 {
@@ -105,7 +68,7 @@ function run_bisect ()
 
   cd $WORKDIR/cubrid
   git bisect start $BAD_COMMIT $GOOD_COMMIT
-  git bisect run run_test_single $TEST_CASE
+  git bisect run bash -c "\"$WORKDIR/run_build_test.sh\" \"$TEST_CASE\""
   git bisect reset
 }
 
