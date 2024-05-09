@@ -31,7 +31,9 @@ function run_checkout ()
     return 1
   fi
   if [ ! -d $WORKDIR/cubrid-testcases-private-ex ]; then
-    git clone -q --depth 1 --branch $BRANCH_TESTCASES https://github.com/CUBRID/cubrid-testcases-private-ex $WORKDIR/cubrid-testcases-private-ex
+    echo "please clone cubrid-testcases-ex directory!"
+    echo "ex) git clone -q --depth 1 --branch $BRANCH_TESTCASES https://github.com/CUBRID/cubrid-testcases-private-ex $WORKDIR/cubrid-testcases-private-ex"
+    return 1
   elif [ -d $WORKDIR/cubrid-testcases-private-ex/.git ]; then
     (cd $WORKDIR/cubrid-testcases-private-ex && git clean -df)
   else
@@ -101,8 +103,8 @@ function run_bisect ()
   git bisect start $BAD_COMMIT $GOOD_COMMIT
 
   while true; do
-   echo "Execute : run_build"
-    run_build -g ninja > /dev/null 2>&1
+    echo "Execute : run_build"
+    run_build -g ninja
     if [ $? -ne 0 ]; then
       echo "Build failed, marking commit as bad."
       git bisect bad
@@ -110,7 +112,7 @@ function run_bisect ()
     fi
 
     echo "Execute run_test_single : $TEST_CASE"
-    run_test_single "$TEST_CASE" > /dev/null 2>&1
+    run_test_single "$TEST_CASE"
     cd $WORKDIR/cubrid 
     if [ $test_result -eq 0 ]; then
       echo "Test passed, marking commit as good."
@@ -130,7 +132,7 @@ function run_bisect ()
 
   done
 
-  git bisect log
+  git bisect log > $WORKDIR/bisect_result.log 2>&1
   git bisect reset
 }
 
