@@ -95,6 +95,7 @@ function run_bisect ()
 
   cd $WORKDIR/cubrid
   if git status | grep "You are currently bisecting"; then
+    echo "reset bisect history"
     git bisect reset
   fi
   git bisect start $BAD_COMMIT $GOOD_COMMIT
