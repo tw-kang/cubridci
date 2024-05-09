@@ -57,6 +57,10 @@ function run_build ()
   grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || { true; }  
 }
 
+run_build_and_test() {
+    source $WORKDIR/run_build_test.sh "$1"
+}
+
 # usage : bisect [bad commit] [good commit] [testcase path ex)shell/.../cases/xxx.sh]
 function run_bisect ()
 {
@@ -68,7 +72,22 @@ function run_bisect ()
 
   cd $WORKDIR/cubrid
   git bisect start $BAD_COMMIT $GOOD_COMMIT
-  git bisect run bash -c "\"$WORKDIR/run_build_test.sh\" \"$TEST_CASE\""
+#  git bisect run bash -c "\"$WORKDIR/run_build_test.sh\" \"$TEST_CASE\""
+  while true; do
+      git bisect next
+      if [ $? -ne 0 ]; then
+          echo "Bisect complete or failed."
+          break
+      fi
+
+      # Run build and test on the checked out commit
+      if run_build_and_test $TEST_CASE; then
+          git bisect good
+      else
+          git bisect bad
+      fi
+  done
+
   git bisect reset
 }
 

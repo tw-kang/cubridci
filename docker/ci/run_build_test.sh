@@ -19,12 +19,12 @@ else
   exit 1
 fi
 
-(cd $CUBRID_SRCDIR \
-  && ./build.sh -p $CUBRID -g ninja clean build) | tee build.log 
-if grep -q "Building failed" build.log; then
-    tail -500 build.log
-    exit 1
-fi
+#(cd $CUBRID_SRCDIR \
+#  && ./build.sh -p $CUBRID -g ninja clean build) | tee build.log 
+#if grep -q "Building failed" build.log; then
+#    tail -500 build.log
+#    exit 1
+#fi
 
 
 #run_test_single
