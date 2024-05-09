@@ -57,8 +57,30 @@ function run_build ()
   grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || { true; }  
 }
 
-run_build_and_test() {
-    source $WORKDIR/run_build_test.sh "$1"
+run_test_single() 
+{
+  TEST_CASE=$1
+  TCROOTDIRNAME=$WORKDIR/cubrid-testcases-private-ex
+  TESTDIR=$(dirname "$TEST_CASE")
+  TESTFILE=$(basename "$TEST_CASE")
+
+  if [ ! -f "$TCROOTDIRNAME/$TESTDIR/$TESTFILE" ]; then
+    echo "$TEST_CASE does not exist in $TCROOTDIRNAME."
+    exit 1
+  fi
+  
+  cd "$TCROOTDIRNAME/$TESTDIR"
+  sh $TESTFILE
+
+  nameNotExt="${TESTFILE%.*}"
+  NOKCnt=$(grep -rw NOK "${nameNotExt}.result" | wc -l)
+  if [ $NOKCnt -ge 1 ]; then
+    echo "$TEST_CASE ==> FAIL" 
+    test_result=1 
+  else
+    echo "$TEST_CASE ==> PASS" 
+    test_result=0
+  fi
 }
 
 # usage : bisect [bad commit] [good commit] [testcase path ex)shell/.../cases/xxx.sh]
@@ -68,26 +90,46 @@ function run_bisect ()
   GOOD_COMMIT=$2
   TEST_CASE=$3
 
+  echo "Execute : run_checkout"
   run_checkout
 
   cd $WORKDIR/cubrid
+  if git status | grep "You are currently bisecting"; then
+    git bisect reset
+  fi
   git bisect start $BAD_COMMIT $GOOD_COMMIT
-#  git bisect run bash -c "\"$WORKDIR/run_build_test.sh\" \"$TEST_CASE\""
-  while true; do
-      git bisect next
-      if [ $? -ne 0 ]; then
-          echo "Bisect complete or failed."
-          break
-      fi
 
-      # Run build and test on the checked out commit
-      if run_build_and_test $TEST_CASE; then
-          git bisect good
-      else
-          git bisect bad
-      fi
+  while true; do
+   echo "Execute : run_build"
+    run_build -g ninja > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      echo "Build failed, marking commit as bad."
+      git bisect bad
+      continue
+    fi
+
+    echo "Execute run_test_single : $TEST_CASE"
+    run_test_single "$TEST_CASE" > /dev/null 2>&1
+    cd $WORKDIR/cubrid 
+    if [ $test_result -eq 0 ]; then
+      echo "Test passed, marking commit as good."
+      git bisect good
+    elif [ $test_result -eq 1 ]; then
+      echo "Test failed, marking commit as bad."
+      git bisect bad
+    else
+      echo "Test skipped or unknown error, skipping commit."
+      git bisect skip
+    fi
+    
+    if git bisect log | grep "first bad commit"; then
+      echo "Bisect complete. The first bad commit has been found."
+      break
+    fi
+
   done
 
+  git bisect log
   git bisect reset
 }
 
