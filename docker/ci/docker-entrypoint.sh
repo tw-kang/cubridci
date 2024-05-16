@@ -1,9 +1,5 @@
 #!/bin/bash -le
 
-export CTP_HOME=$WORKDIR/cubrid-testtools/CTP
-export init_path=$CTP_HOME/shell/init_path
-export CTP_SKIP_UPDATE=0
-
 function run_checkout ()
 {
   if [ ! -d $WORKDIR/cubrid ]; then
