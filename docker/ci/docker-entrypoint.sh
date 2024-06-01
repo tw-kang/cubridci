@@ -49,8 +49,15 @@ function run_build ()
     return 1
   fi
 
-  (cd $CUBRID_SRCDIR \
-    && ./build.sh -p $CUBRID $@ clean build) | tee build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 build.log; false; }
+  if find $CUBRID_SRCDIR -type d -name 'build_*' | grep -q .; then
+    echo "Incremental build directory found. Performing incremental build using Ninja..."
+    ( cd $CUBRID_SRCDIR/build_* \
+      && ninja && ninja install) | tee $CUBRID_SRCDIR/build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 $CUBRID_SRCDIR/build.log; false; }
+  else
+    echo "No incremental builld directory found. Performing full build..."
+    (cd $CUBRID_SRCDIR \
+      && ./build.sh -p $CUBRID $@ clean build) | tee build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 build.log; false; }
+  fi
 
   grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || { true; }  
 }
