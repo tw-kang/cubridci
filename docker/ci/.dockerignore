@@ -1,0 +1,6 @@
+cubrid-*
+cubrid
+CUBRID
+
+.*
+!.gitignore

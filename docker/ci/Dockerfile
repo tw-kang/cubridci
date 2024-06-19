@@ -42,6 +42,10 @@ RUN source scl_source enable devtoolset-8 \
 ENV WORKDIR /home
 ENV JAVA_HOME /usr/lib/jvm/java
 
+# build environment variables
+RUN mkdir -p $WORKDIR/drop
+ENV DROPDIR $WORKDIR/drop
+
 # CUBRID envronment variables
 ENV CUBRID $WORKDIR/CUBRID
 ENV CUBRID_DATABASES $CUBRID/databases
@@ -65,6 +69,7 @@ COPY docker-entrypoint.sh /entrypoint.sh
 
 RUN chmod 775 /entrypoint.sh
 RUN chmod 777 $WORKDIR
+RUN chmod 777 $DROPDIR
 WORKDIR $WORKDIR
 
 ENTRYPOINT ["scl", "enable", "devtoolset-8", "--", "/entrypoint.sh"]

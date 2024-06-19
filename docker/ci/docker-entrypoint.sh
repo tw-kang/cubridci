@@ -2,6 +2,24 @@
 
 function run_checkout ()
 {
+  set -e
+  if [ ! -d $WORKDIR/cubrid ]; then
+    git clone -q --recurse-submodules --branch $BRANCH_TESTCASES https://github.com/CUBRID/cubrid $WORKDIR/cubrid
+  elif [ -d $WORKDIR/cubrid/.git ]; then
+    cd $WORKDIR/cubrid
+    git fetch --all
+    if git show-ref --verify --quiet refs/heads/$BRANCH_TESTCASES; then
+      git checkout $BRANCH_TESTCASES
+    else
+      git checkout -b $BRANCH_TESTCASES origin/$BRANCH_TESTCASES
+    fi
+    git pull origin $BRANCH_TESTCASES
+    git submodule update --init --recursive
+    git submodule update --remote
+  else
+    echo "Cannot find .git from $WORKDIR/cubrid directory!"
+    return 1
+  fi
   if [ ! -d $WORKDIR/cubrid-testtools ]; then
     git clone -q --depth 1 --branch $BRANCH_TESTTOOLS https://github.com/CUBRID/cubrid-testtools $WORKDIR/cubrid-testtools
   elif [ -d $WORKDIR/cubrid-testtools/.git ]; then
@@ -19,6 +37,80 @@ function run_checkout ()
     return 1
   fi
 
+}
+
+# Example usage:
+# run_build_all 11.4.0.1272-72b2545 11.4.0.1259-cc564f4
+function run_build_all ()
+{
+  # Check parameters
+#  if [ $# -ne 2 ]; then
+#    echo "Usage: run_build_all <latest_version-commit_hash> <previous_version-commit_hash>"
+#    return 1
+#  fi
+
+  local latest_commit=$1
+  local previous_commit=$2
+  shift 2
+  local options=$@
+
+  local latest_version=${latest_commit%-*}
+  local previous_version=${previous_commit%-*}
+  local latest_hash=${latest_commit#*-}
+  local previous_hash=${previous_commit#*-}
+
+  # Run checkout
+  run_checkout
+
+  if [ -f ./build.sh ]; then
+    CUBRID_SRCDIR=.
+  elif [ -f cubrid/build.sh ]; then
+    CUBRID_SRCDIR=cubrid
+  else
+    echo "Cannot find CUBRID source directory!"
+    return 1
+  fi
+
+  # Ensure build directory exists
+  mkdir -p $DROPDIR/$latest_version
+  mkdir -p $DROPDIR/$previous_version
+
+  # Full build for the latest commit
+  echo "Performing full build for the latest commit: $latest_commit"
+  (cd $CUBRID_SRCDIR \
+    && git checkout $latest_hash \
+    && git submodule update --init --recursive \
+    && ./build.sh -o $DROPDIR/$latest_version -g ninja $options clean build) | tee build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 build.log; false; }
+
+  # Check if the build failed
+  grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || true
+
+  # Incremental builds for the range
+  commits=$(git log --pretty=format:"%H" $previous_hash..$latest_hash | tail -n +2)
+
+  for commit in $commits; do
+    echo "Performing incremental build for commit: $commit"
+    (cd $CUBRID_SRCDIR/build_* \
+      && git checkout $commit \
+      && git submodule update --init --recursive \
+      && ninja) | tee $CUBRID_SRCDIR/build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 $CUBRID_SRCDIR/build.log; false; }
+    # Check if the build failed
+    grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || true
+    
+    cd $CUBRID_SRCDIR
+    current_version=$(./build.sh -v)
+    if [ ! -d $DROPDIR/$current_version ]; then
+      mkdir -p $DROPDIR/$current_version
+    fi
+
+    echo "Packaging for commit: $commit"
+    (cd $CUBRID_SRCDIR \
+      && ./build.sh -o $DROPDIR/$current_version @options dist) | tee $CUBRID_SRCDIR/dist.log | grep -e 'OK \[.*\]' -e ' error: ' -e 'Packaging for .* failed' || { tail -500 $CUBRID_SRCDIR/dist.log; false; }
+
+    # Check if the build failed
+    grep "Packaging for .* failed" $CUBRID_SRCDIR/dist.log && exit 1 || true
+
+  done
 }
 
 function run_build ()
@@ -252,6 +344,10 @@ case "$1" in
   build)
     shift
     set -- run_build "$@"
+    ;;
+  build_all)
+    shift
+    set -- run_build_all "$@"
     ;;
   dist)
     shift
