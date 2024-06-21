@@ -40,20 +40,20 @@ function run_checkout ()
 }
 
 # Example usage:
-# run_build_all 11.4.0.1272-72b2545 11.4.0.1259-cc564f4
+# run_build_all 11.4.0.1272-72b2545 11.4.0.1259-cc564f4 additional_params
 function run_build_all ()
 {
   # Check parameters
-#  if [ $# -ne 2 ]; then
-#    echo "Usage: run_build_all <latest_version-commit_hash> <previous_version-commit_hash>"
-#    return 1
-#  fi
+  if [ $# -lt 2 ]; then
+    echo "Usage: run_build_all <latest_version-commit_hash> <previous_version-commit_hash> [additional_params...]"
+    return 1
+  fi
 
   local latest_commit=$1
   local previous_commit=$2
   shift 2
-  local options=$@
-
+  local additional_params="$@"
+  
   local latest_version=${latest_commit%-*}
   local previous_version=${previous_commit%-*}
   local latest_hash=${latest_commit#*-}
@@ -72,28 +72,27 @@ function run_build_all ()
   fi
 
   # Ensure build directory exists
-  mkdir -p $DROPDIR/$latest_version
-  mkdir -p $DROPDIR/$previous_version
+  mkdir -p $DROPDIR/$latest_commit
 
   # Full build for the latest commit
   echo "Performing full build for the latest commit: $latest_commit"
   (cd $CUBRID_SRCDIR \
     && git checkout $latest_hash \
     && git submodule update --init --recursive \
-    && ./build.sh -o $DROPDIR/$latest_version -g ninja $options clean build) | tee build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 build.log; false; }
+    && ./build.sh -o $DROPDIR/$latest_version $additional_params all) | tee build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 build.log; false; }
 
   # Check if the build failed
   grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || true
 
-  # Incremental builds for the range
-  commits=$(git log --pretty=format:"%H" $previous_hash..$latest_hash | tail -n +2)
-
+  # Incremental builds for each commit until previous commit
+  commits=$(git rev-list $previous_hash^..$latest_hash~1)
   for commit in $commits; do
     echo "Performing incremental build for commit: $commit"
     (cd $CUBRID_SRCDIR/build_* \
       && git checkout $commit \
       && git submodule update --init --recursive \
       && ninja) | tee $CUBRID_SRCDIR/build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 $CUBRID_SRCDIR/build.log; false; }
+    
     # Check if the build failed
     grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || true
     
@@ -105,12 +104,20 @@ function run_build_all ()
 
     echo "Packaging for commit: $commit"
     (cd $CUBRID_SRCDIR \
-      && ./build.sh -o $DROPDIR/$current_version @options dist) | tee $CUBRID_SRCDIR/dist.log | grep -e 'OK \[.*\]' -e ' error: ' -e 'Packaging for .* failed' || { tail -500 $CUBRID_SRCDIR/dist.log; false; }
+      && ./build.sh -o $DROPDIR/$current_version $additional_params dist) | tee $CUBRID_SRCDIR/dist.log | grep -e 'Completed' -e ' error: ' -e 'Packaging for .* failed' || { tail -500 $CUBRID_SRCDIR/dist.log; false; }
 
     # Check if the build failed
-    grep "Packaging for .* failed" $CUBRID_SRCDIR/dist.log && exit 1 || true
+    if ! grep "Completed" $CUBRID_SRCDIR/dist.log; then
+      echo "Packaging failed for commit: $commit"
+      exit 1
+    fi
 
+    # Stop if we have reached the previous commit
+    if [ "$commit" == "$previous_hash" ]; then
+      break
+    fi
   done
+
 }
 
 function run_build ()
