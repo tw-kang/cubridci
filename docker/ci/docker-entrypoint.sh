@@ -79,7 +79,7 @@ function run_build_all ()
   (cd $CUBRID_SRCDIR \
     && git checkout $latest_hash \
     && git submodule update --init --recursive \
-    && ./build.sh -o $DROPDIR/$latest_version $additional_params all) | tee build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 build.log; false; }
+    && ./build.sh -o $DROPDIR/$latest_version -g ninja $additional_params all) | tee build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 build.log; false; }
 
   # Check if the build failed
   grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || true
@@ -112,10 +112,6 @@ function run_build_all ()
       exit 1
     fi
 
-    # Stop if we have reached the previous commit
-    if [ "$commit" == "$previous_hash" ]; then
-      break
-    fi
   done
 
 }
