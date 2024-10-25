@@ -78,42 +78,47 @@ function run_build_all ()
   echo "Performing full build for the latest commit: $latest_commit"
   (cd $CUBRID_SRCDIR \
     && git checkout $latest_hash \
-    && git submodule update --init --recursive \
+    && git checkout -b $latest_version-$previous_version
+    && git submodule update --recursive \
     && ./build.sh -o $DROPDIR/$latest_version -g ninja $additional_params all) | tee build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 build.log; false; }
 
   # Check if the build failed
   grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || true
 
+  # Reset to the latest commit
+  cd $CUBRID_SRCDIR
+  git reset --hard $latest_hash
+
   # Incremental builds for each commit until previous commit
-  commits=$(git rev-list $previous_hash^..$latest_hash~1)
-  for commit in $commits; do
-    echo "Performing incremental build for commit: $commit"
-    (cd $CUBRID_SRCDIR/build_* \
-      && git checkout $commit \
-      && git submodule update --init --recursive \
+  while [ "$(git rev-parse HEAD)" != "$previous_hash" ]; do
+    echo "Performing incremental build for commit: $(git rev-parse --short HEAD)"
+    
+    # Build current commit
+    (cd build_* \
+      && git submodule update --recursive \
       && ninja) | tee $CUBRID_SRCDIR/build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 $CUBRID_SRCDIR/build.log; false; }
     
     # Check if the build failed
     grep "Building failed" $CUBRID_SRCDIR/build.log && exit 1 || true
     
-    cd $CUBRID_SRCDIR
     current_version=$(./build.sh -v)
     if [ ! -d $DROPDIR/$current_version ]; then
       mkdir -p $DROPDIR/$current_version
     fi
 
-    echo "Packaging for commit: $commit"
+    echo "Packaging for commit: $(git rev-parse --short HEAD)"
     (cd $CUBRID_SRCDIR \
       && ./build.sh -o $DROPDIR/$current_version $additional_params dist) | tee $CUBRID_SRCDIR/dist.log | grep -e 'Completed' -e ' error: ' -e 'Packaging for .* failed' || { tail -500 $CUBRID_SRCDIR/dist.log; false; }
 
-    # Check if the build failed
+    # Check if packaging failed
     if ! grep "Completed" $CUBRID_SRCDIR/dist.log; then
-      echo "Packaging failed for commit: $commit"
+      echo "Packaging failed for commit: $(git rev-parse --short HEAD)"
       exit 1
     fi
 
+    # Move to the previous commit
+    git reset --hard HEAD~1
   done
-
 }
 
 function run_build ()
