@@ -78,7 +78,7 @@ function run_build_all ()
   echo "Performing full build for the latest commit: $latest_commit"
   (cd $CUBRID_SRCDIR \
     && git checkout $latest_hash \
-    && git checkout -b $latest_version-$previous_version
+    && git checkout -b $latest_version-$previous_version \
     && git submodule update --recursive \
     && ./build.sh -o $DROPDIR/$latest_version -g ninja $additional_params all) | tee build.log | grep -e '\[[ 0-9]\+%\]' -e ' error: ' -e '\[[0-9]\+\/[0-9]\+\]' || { tail -500 build.log; false; }
 
