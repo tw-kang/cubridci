@@ -7,22 +7,34 @@ import org.w3c.dom.*;          // For DOM parsing
 public class manual_test_result {
     
     public static void main(String[] args) {
-        // Usage: java manual_test_result <base_version> <xml_file_path>
-        if (args.length < 2) {
-            System.out.println("Usage: java manual_test_result <base_version> <xml_file_path>");
+        // Usage: java manual_test_result [base_version] <xml_file_path>
+        if (args.length < 1) {
+            System.out.println("Usage: java manual_test_result [base_version] <xml_file_path>");
             System.exit(0);
         }
-        
-        String baseVersion = args[0];
-        String xmlFilePath = args[1];
-        String cur_dir = System.getProperty("user.dir");
-        String newFilename = cur_dir + "/" + baseVersion + "__" + "civersion" + "_new.csv";
-        String dupFilename = cur_dir + "/" + baseVersion + "__" + "civersion" + "_dup.csv";
         
         // DB connection information (modify as needed)
         String url = "jdbc:cubrid:127.0.0.1:30000:qaresu:::";
         String user = "manual_user";
         String password = "manual_user_123";
+        
+        String baseVersion;
+        String xmlFilePath;
+        
+        if (args.length == 1) {
+            // Only XML file path is provided, get the latest base version from DB
+            xmlFilePath = args[0];
+            baseVersion = getLatestBaseVersion(url, user, password);
+            System.out.println("No base version provided. Using latest version from DB: " + baseVersion);
+        } else {
+            // Both base version and XML file path are provided
+            baseVersion = args[0];
+            xmlFilePath = args[1];
+        }
+        
+        String cur_dir = System.getProperty("user.dir");
+        String newFilename = cur_dir + "/" + baseVersion + "__" + "civersion" + "_new.csv";
+        String dupFilename = cur_dir + "/" + baseVersion + "__" + "civersion" + "_dup.csv";
         
         // Retrieve baseline test cases from DB using the given base version.
         Set<String> baselineTestCases = getBaselineTestCases(baseVersion, url, user, password);
@@ -38,13 +50,54 @@ public class manual_test_result {
         writeTestCasesToCSV(newFilename, newTestCases);
         System.out.println("CSV file created: " + newFilename);
         
-        // Calculate intersection (duplicate test cases) between baseline and XML test cases.
-        Set<String> dupTestCases = new HashSet<>(baselineTestCases);
-        dupTestCases.retainAll(xmlTestCases);
+        // Extract duplicate cases: Cases present in both XML and baseline.
+        Set<String> dupTestCases = new HashSet<>(xmlTestCases);
+        dupTestCases.retainAll(baselineTestCases);
         
         // Write duplicate test cases to CSV.
         writeTestCasesToCSV(dupFilename, dupTestCases);
         System.out.println("CSV file created: " + dupFilename);
+    }
+    
+    /**
+     * Get the latest base version from the database.
+     * 
+     * @param url      The database URL
+     * @param user     The database user
+     * @param password The database password
+     * @return The latest base version
+     */
+    public static String getLatestBaseVersion(String url, String user, String password) {
+        String latestVersion = "unknown";
+        try {
+            // Load the CUBRID JDBC driver
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+        } catch (ClassNotFoundException e) {
+            System.err.println("Unable to load driver.");
+            e.printStackTrace();
+            return latestVersion;
+        }
+        
+        try (Connection conn = DriverManager.getConnection(url, user, password)) {
+            String sql = "SELECT DISTINCT m.build_id FROM verify_main m " +
+                         "WHERE m.sce_cat = 'shell' " +
+                         "AND m.env_os = 'linux' " +
+                         "AND m.sce_mcat = 'basic' " +
+                         "AND m.build_bit = '64bits' " +
+                         "ORDER BY m.build_id DESC LIMIT 1";
+            
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                if (rs.next()) {
+                    latestVersion = rs.getString(1).trim();
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error getting latest base version:");
+            e.printStackTrace();
+        }
+        
+        return latestVersion;
     }
     
     /**
