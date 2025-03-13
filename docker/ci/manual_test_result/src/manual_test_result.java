@@ -79,12 +79,34 @@ public class manual_test_result {
         }
         
         try (Connection conn = DriverManager.getConnection(url, user, password)) {
-            String sql = "SELECT DISTINCT m.build_id FROM verify_main m " +
-                         "WHERE m.sce_cat = 'shell' " +
-                         "AND m.env_os = 'linux' " +
-                         "AND m.sce_mcat = 'basic' " +
-                         "AND m.build_bit = '64bits' " +
-                         "ORDER BY m.build_id DESC LIMIT 1";
+            String sql = "select build_id " +
+                    "from ( " +
+                    "    SELECT 1 seq, test_build build_id " +
+                    "    FROM shell_main " +
+                    "    WHERE main_id = ( SELECT MAX(A.main_id) " +
+                    "                      FROM shell_main  A, cubrid_build B " +
+                    "                      WHERE A.os = 'linux' AND A.version= '64bits' AND A.category='shell' " +
+                    "                        AND A.test_rate=100 " +
+                    "                        AND A.test_build = B.build_id " +
+                    "                        AND B.build_type = 'general' " +
+                    "                    ) " +
+                    "      AND test_build = ( SELECT MAX(A.test_build) " +
+                    "                         FROM shell_main  A, cubrid_build B " +
+                    "                         WHERE A.os = 'linux' AND A.version= '64bits' AND A.category='shell' " +
+                    "                           AND A.test_rate=100 AND A.start_time > ( SYS_DATE - 60 ) " +
+                    "                           AND A.test_build = B.build_id " +
+                    "                           AND B.build_type = 'general' " +
+                    "                       ) " +
+                    "    UNION ALL " +
+                    "    SELECT 2 seq, MAX(A.test_build)  build_id " +
+                    "    FROM shell_main  A, cubrid_build B " +
+                    "    WHERE A.os = 'linux' AND A.version= '64bits' AND A.category='shell' " +
+                    "      AND A.test_rate=100 AND A.start_time > ( SYS_DATE - 60 ) " +
+                    "      AND A.test_build = B.build_id " +
+                    "      AND B.build_type = 'general' " +
+                    "    ORDER BY 1 " +
+                    "    LIMIT 1 " +
+                    ")";
             
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
@@ -164,18 +186,26 @@ public class manual_test_result {
                 Node node = nList.item(i);
                 if (node.getNodeType() == Node.ELEMENT_NODE) {
                     Element element = (Element) node;
-                    String testCaseName = element.getAttribute("name").trim();
-                    // Remove prefix if exists to match DB format.
-                    String prefix = "cubrid-testcases-private-ex/";
-                    if (testCaseName.startsWith(prefix)) {
-                        testCaseName = testCaseName.substring(prefix.length());
+                    
+                    // Check if this testcase has a failure element
+                    NodeList failureList = element.getElementsByTagName("failure");
+                    if (failureList.getLength() > 0) {
+                        // This is a failed test case, include it
+                        String testCaseName = element.getAttribute("name").trim();
+                        // Remove prefix if exists to match DB format.
+                        String prefix = "cubrid-testcases-private-ex/";
+                        if (testCaseName.startsWith(prefix)) {
+                            testCaseName = testCaseName.substring(prefix.length());
+                        }
+                        testCases.add(testCaseName);
+                        System.out.println("Failed testCase: " + testCaseName);
                     }
-                    testCases.add(testCaseName);
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+        System.out.println("Failed testCases count: " + testCases.size());
         return testCases;
     }
     
